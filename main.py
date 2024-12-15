@@ -84,10 +84,10 @@ def create_transparent_box(root, canvas, width, height, clipboard_label):
     update_box()
 
 def capture_box():
-    """Capture a box of 50em x 20em around the mouse pointer and return the image."""
+    """Capture a box of 10em x 4em around the mouse pointer and return the image."""
     x, y = pyautogui.position()
-    box_width = 10 * 16  # 50em in pixels
-    box_height = 4 * 16  # 20em in pixels
+    box_width = 10 * 16  # 10em in pixels
+    box_height = 4 * 16  # 4em in pixels
     left = max(x - box_width // 2, 0)
     top = max(y - box_height // 2, 0)
     right = left + box_width
@@ -128,7 +128,7 @@ def start_application():
                 print("Box activated! Capturing...")
                 mouse_x, mouse_y = pyautogui.position()
                 screenshot = capture_box()
-                box_left, box_top = mouse_x - (50 * 16) // 2, mouse_y - (20 * 16) // 2
+                box_left, box_top = mouse_x - (10 * 16) // 2, mouse_y - (4 * 16) // 2
                 data = process_image(screenshot)
                 nearest_text = find_nearest_text(data, mouse_x, mouse_y, box_left, box_top)
 
@@ -152,7 +152,7 @@ def start_application():
                 print("Box activated! Capturing...")
                 mouse_x, mouse_y = pyautogui.position()
                 screenshot = capture_box()
-                box_left, box_top = mouse_x - (50 * 16) // 2, mouse_y - (20 * 16) // 2
+                box_left, box_top = mouse_x - (10 * 16) // 2, mouse_y - (4 * 16) // 2
                 data = process_image(screenshot)
                 nearest_text = find_nearest_text(data, mouse_x, mouse_y, box_left, box_top)
 
@@ -172,8 +172,8 @@ def start_application():
             print(f"Error: {e}")
 
 def main():
-    box_width = 10 * 16  # 50em in pixels
-    box_height = 4 * 16  # 20em in pixels
+    box_width = 10 * 16  # 10em in pixels
+    box_height = 4 * 16  # 4em in pixels
 
     root = tk.Tk()
     root.overrideredirect(True)
