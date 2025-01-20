@@ -11,9 +11,7 @@ from tkinter import ttk
 import webbrowser
 import re
 import requests
-from io import BytesIO
-import httpx
-import asyncio
+
 
 # Set up pytesseract path (update this based on your installation)
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
@@ -36,6 +34,24 @@ TARGET_WORDS = {
 BOX_WIDTH_EM = 10  # Width in em
 BOX_HEIGHT_EM = 4  # Height in em
 app_running = True  # To manage the app's running state
+
+def get_word_definition(word):
+    word = word.split()[0]
+    print(word)
+    """Get the definition of a word using Free Dictionary API."""
+    try:
+        response = requests.get(f"https://api.dictionaryapi.dev/api/v2/entries/en/{word}")
+        print(response)
+        if response.status_code == 200:
+            data = response.json()
+            if data and len(data) > 0:
+                definitions = data[0]['meanings'][0]['definitions']
+                # Concatenate the definitions into a single string
+                concatenated_definitions = " ".join([definition['definition'] for definition in definitions])
+                return concatenated_definitions
+        return "No definition found"
+    except:
+        return "Error fetching definition"
 
 def google_search(query, image_search=False):
     """Search the extracted text on Google or Google Images."""
@@ -83,7 +99,7 @@ def create_transparent_box(root, canvas, clipboard_label):
             clipboard_label.config(text=f"{truncated_text}", fg="green")
 
             # Schedule the next update
-            root.after(50, update_box)
+            root.after(20, update_box)
         except Exception as e:
             print(f"Error in update_box: {e}")
 
@@ -133,42 +149,6 @@ def find_nearest_text(data):
     arranged_text = " ".join(word for word in words if word.strip())
     return arranged_text
 
-async def upload_image_for_search(image):
-    """Asynchronously upload the image to Bing for image search."""
-    url = "https://www.bing.com/images/search"
-    try:
-        # Convert the image to bytes for upload
-        image_bytes = BytesIO()
-        image.save(image_bytes, format="JPEG")
-        image_bytes.seek(0)
-        
-        files = {'file': ('screenshot.jpg', image_bytes, 'image/jpeg')}
-        
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-        }
-
-        async with httpx.AsyncClient() as client:
-            response = await client.post(url, files=files, headers=headers)
-
-            if response.status_code == 200:
-                print("Image uploaded successfully!")
-                # Open the search results in a browser
-                webbrowser.open(response.url)
-            elif response.status_code == 302:
-                # Handle redirect by checking the new location
-                print(f"Redirected to: {response.headers.get('Location')}")
-                # Follow the redirect and open the new URL in a browser
-                webbrowser.open(response.headers.get('Location'))
-            else:
-                print(f"Failed to upload image. Status code: {response.status_code}")
-    except Exception as e:
-        print(f"Error during image upload: {e}")
-
-
-def handle_image_upload(image):
-    """Run the async function in the event loop."""
-    asyncio.run(upload_image_for_search(image))
 
 def start_application():
     """Start the main application loop."""
@@ -199,11 +179,18 @@ def start_application():
                 data = process_image(screenshot)
                 nearest_text = find_nearest_text(data)
                 google_search(nearest_text)
-
-            if keyboard.is_pressed('ctrl+shift+q'):
-                print("Image Search activated!")
+            if keyboard.is_pressed('ctrl+shift+m'):
+                print("Dictionary activated")
                 screenshot = capture_box()
-                handle_image_upload(screenshot)
+                data = process_image(screenshot)
+                nearest_text = find_nearest_text(data)
+                value = get_word_definition(nearest_text)
+                pyperclip.copy(value)
+            # if keyboard.is_pressed('ctrl+shift+q'):
+            #     print("Image Search activated!")
+            #     screenshot = capture_box()
+            #     handle_image_upload(screenshot)
+
 
             if keyboard.is_pressed('ctrl+shift+o'):
                 app_running = False
@@ -257,3 +244,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
