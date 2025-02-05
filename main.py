@@ -1,3 +1,5 @@
+import asyncio
+import os
 import pytesseract
 import pyautogui
 import pyperclip
@@ -11,7 +13,17 @@ from tkinter import ttk
 import webbrowser
 import re
 import requests
-
+from io import BytesIO
+import httpx
+import time
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
 
 # Set up pytesseract path (update this based on your installation)
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
@@ -34,24 +46,6 @@ TARGET_WORDS = {
 BOX_WIDTH_EM = 10  # Width in em
 BOX_HEIGHT_EM = 4  # Height in em
 app_running = True  # To manage the app's running state
-
-def get_word_definition(word):
-    word = word.split()[0]
-    print(word)
-    """Get the definition of a word using Free Dictionary API."""
-    try:
-        response = requests.get(f"https://api.dictionaryapi.dev/api/v2/entries/en/{word}")
-        print(response)
-        if response.status_code == 200:
-            data = response.json()
-            if data and len(data) > 0:
-                definitions = data[0]['meanings'][0]['definitions']
-                # Concatenate the definitions into a single string
-                concatenated_definitions = " ".join([definition['definition'] for definition in definitions])
-                return concatenated_definitions
-        return "No definition found"
-    except:
-        return "Error fetching definition"
 
 def google_search(query, image_search=False):
     """Search the extracted text on Google or Google Images."""
@@ -99,7 +93,7 @@ def create_transparent_box(root, canvas, clipboard_label):
             clipboard_label.config(text=f"{truncated_text}", fg="green")
 
             # Schedule the next update
-            root.after(20, update_box)
+            root.after(50, update_box)
         except Exception as e:
             print(f"Error in update_box: {e}")
 
@@ -129,6 +123,12 @@ def capture_box():
     screenshot = ImageGrab.grab(bbox=(left, top, right, bottom))
     return screenshot
 
+def find_nearest_text(data):
+    """Extract and arrange text from OCR output."""
+    words = data['text']
+    arranged_text = " ".join(word for word in words if word.strip())
+    return arranged_text
+
 def process_image(image):
     """Process the image and perform OCR to extract text."""
     open_cv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
@@ -143,12 +143,56 @@ def process_image(image):
 
     return data
 
-def find_nearest_text(data):
-    """Extract and arrange text from OCR output."""
-    words = data['text']
-    arranged_text = " ".join(word for word in words if word.strip())
-    return arranged_text
 
+def capture_screenshot(screenshot):
+    """Save the captured screenshot to the current working directory."""
+    file_path = os.path.join(os.getcwd(), "screenshot.jpg")
+    screenshot.save(file_path, "JPEG")
+    print(f"Screenshot saved at: {file_path}")
+    return file_path
+ 
+FILE_PATH = os.path.join(os.getcwd(), "screenshot.jpg")
+GOOGLE_LENS_URL = "https://lens.google.com/upload"
+BING_IMAGE_SEARCH_URL = "https://www.bing.com/visualsearch"
+def upload_to_google_lens():
+    # Automatically install and use the correct ChromeDriver
+    chrome_options = Options()
+    chrome_options.add_experimental_option("detach", True)  # Keep browser open
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+
+    try:
+        # Open Bing Visual Search
+        driver.get(BING_IMAGE_SEARCH_URL)
+
+        # Wait for Upload Button & Ensure It’s Visible
+        upload_button = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.XPATH, "//input[@type='file']"))
+        )
+        driver.execute_script("arguments[0].style.display = 'block';", upload_button)
+
+        # Upload Screenshot
+        upload_button.send_keys(FILE_PATH)
+        print("Image uploaded to Bing successfully!")
+
+        # Wait for Image Preview to Load
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.CLASS_NAME, "visualSearchResults"))
+        )
+        print("Image processed successfully!")
+
+        # Keep the browser open for manual verification
+        print("🔹 Browser will remain open. Close it manually when done.")
+        while True:
+            time.sleep(1)  # Keep script running
+
+    except Exception as e:
+        print(f"❌ Error during upload: {e}")
+
+def translate_text(query):
+    """Translate the selected text using Google Translate."""
+    if query:
+        print(f"Translating: {query}")
+        webbrowser.open(f"https://translate.google.com/?sl=auto&tl=en&text={query}&op=translate")
 
 def start_application():
     """Start the main application loop."""
@@ -179,18 +223,24 @@ def start_application():
                 data = process_image(screenshot)
                 nearest_text = find_nearest_text(data)
                 google_search(nearest_text)
-            if keyboard.is_pressed('ctrl+shift+m'):
-                print("Dictionary activated")
+                
+            if keyboard.is_pressed('ctrl+shift+t'):
+                print("Translation activated!")
                 screenshot = capture_box()
                 data = process_image(screenshot)
                 nearest_text = find_nearest_text(data)
-                value = get_word_definition(nearest_text)
-                pyperclip.copy(value)
-            # if keyboard.is_pressed('ctrl+shift+q'):
-            #     print("Image Search activated!")
-            #     screenshot = capture_box()
-            #     handle_image_upload(screenshot)
+                translate_text(nearest_text)
 
+            if keyboard.is_pressed('ctrl+shift+q'):
+                print("Image Search activated! Capturing screenshot...")
+                # screenshot = capture_box()
+                # screenshot_path = save_screenshot_to_directory(screenshot)
+                # print("Uploading image to Bing for search...")
+                # handle_image_upload(screenshot_path)
+                screenshot=capture_box()
+                screenshot_path = capture_screenshot(screenshot)
+                print("Uploading image for search...")
+                upload_to_google_lens()
 
             if keyboard.is_pressed('ctrl+shift+o'):
                 app_running = False
