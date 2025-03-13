@@ -1,3 +1,11 @@
+# Standard Library
+import os
+import json
+import time
+import asyncio
+from io import BytesIO
+
+# Third-Party Libraries
 import pytesseract
 import pyautogui
 import pyperclip
@@ -5,35 +13,118 @@ import cv2
 import numpy as np
 from PIL import ImageGrab
 import tkinter as tk
-import keyboard
-import threading
-from tkinter import ttk
+from tkinter import ttk, messagebox, simpledialog
 import webbrowser
 import re
 import requests
+import httpx
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+import keyboard
+import threading
 
+# Your Modules (if any)
+from codelibrary import CODE_WORDS  # Make sure this is in the same directory or accessible
 
 # Set up pytesseract path (update this based on your installation)
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
 # Dictionary of target words and their corresponding predefined terms
-TARGET_WORDS = {
-    "Name": "Amish Singh",
-    "First Name": "Amish",
-    "Last Name": "Singh",
-    "Full Name": "Amish Singh",
-    "Email": "amishsingh1210@gmail.com",
-    "Email Address": "amishsingh1210@gmail.com",
-    "E-mail": "amishsingh1210@gmail.com",
-    "Phone Number": "7002780696",
-    "Mobile Number": "7002780696",
-    "Contact Number": "7002780696"
-}
+from codelibrary import CODE_WORDS
+TARGET_WORDS_FILE = "target_words.json"  # Name of the file to store the data
 
+# print(TARGET_WORDS.keys())
 # Variables to control the width and height of the box
 BOX_WIDTH_EM = 10  # Width in em
 BOX_HEIGHT_EM = 4  # Height in em
 app_running = True  # To manage the app's running state
+def load_target_words():
+    """Loads TARGET_WORDS from the JSON file."""
+    try:
+        with open(TARGET_WORDS_FILE, "r") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {
+            "Name": "Amish Singh",
+            "First Name": "Amish",
+            "Last Name": "Singh",
+            "Full Name": "Amish Singh",
+            "Email": "amishsingh1210@gmail.com",
+            "Email Address": "amishsingh1210@gmail.com",
+            "E-mail": "amishsingh1210@gmail.com",
+            "Phone Number": "7002780696",
+            "Mobile Number": "7002780696",
+            "Contact Number": "7002780696"
+            }
+
+def save_target_words():
+    """Saves TARGET_WORDS to the JSON file."""
+    with open(TARGET_WORDS_FILE, "w") as f:
+        json.dump(TARGET_WORDS, f, indent=4)
+
+def edit_target_words(root):
+    """Opens a new window to edit the TARGET_WORDS dictionary."""
+
+    def add_word():
+        new_key = simpledialog.askstring("Add Word", "Enter the target word:")
+        if new_key:
+            new_value = simpledialog.askstring("Add Value", f"Enter the value for '{new_key}':")
+            if new_value:
+                TARGET_WORDS[new_key] = new_value
+                update_listbox()
+
+    def delete_word():
+        selected_index = listbox.curselection()
+        if selected_index:
+            key = listbox.get(selected_index)
+            del TARGET_WORDS[key]
+            update_listbox()
+
+    def edit_word():
+        selected_index = listbox.curselection()
+        if selected_index:
+            selected_item = listbox.get(selected_index)
+            # Extract the key (before the colon)
+            key = selected_item.split(":")[0].strip()  # Split and strip whitespace
+
+            new_value = simpledialog.askstring("Edit Value", f"Enter the new value for '{key}':", initialvalue=TARGET_WORDS[key])
+            if new_value is not None:
+                TARGET_WORDS[key] = new_value
+                update_listbox()
+
+    def update_listbox():
+        listbox.delete(0, tk.END)
+        for key, value in TARGET_WORDS.items():
+            listbox.insert(tk.END, f"{key}: {value}")
+
+    def save_and_close():
+        save_target_words()  # Save before closing
+        edit_window.destroy()
+
+    edit_window = tk.Toplevel(root)
+    edit_window.title("Edit Target Words")
+
+    listbox = tk.Listbox(edit_window, width=50)
+    listbox.pack(padx=10, pady=10)
+    update_listbox()
+
+    add_button = ttk.Button(edit_window, text="Add", command=add_word)
+    add_button.pack(pady=5)
+
+    delete_button = ttk.Button(edit_window, text="Delete", command=delete_word)
+    delete_button.pack(pady=5)
+
+    edit_button = ttk.Button(edit_window, text="Edit", command=edit_word)
+    edit_button.pack(pady=5)
+    save_button = ttk.Button(edit_window, text="Save and Close", command=save_and_close)
+    save_button.pack(pady=5)
+    edit_window.protocol("WM_DELETE_WINDOW", save_and_close)
 
 def get_word_definition(word):
     word = word.split()[0]
@@ -99,7 +190,7 @@ def create_transparent_box(root, canvas, clipboard_label):
             clipboard_label.config(text=f"{truncated_text}", fg="green")
 
             # Schedule the next update
-            root.after(20, update_box)
+            root.after(100, update_box)
         except Exception as e:
             print(f"Error in update_box: {e}")
 
@@ -149,6 +240,55 @@ def find_nearest_text(data):
     arranged_text = " ".join(word for word in words if word.strip())
     return arranged_text
 
+def capture_screenshot(screenshot):
+    """Save the captured screenshot to the current working directory."""
+    file_path = os.path.join(os.getcwd(), "screenshot.jpg")
+    screenshot.save(file_path, "JPEG")
+    print(f"Screenshot saved at: {file_path}")
+    return file_path
+ 
+FILE_PATH = os.path.join(os.getcwd(), "screenshot.jpg")
+GOOGLE_LENS_URL = "https://lens.google.com/upload"
+BING_IMAGE_SEARCH_URL = "https://www.bing.com/visualsearch"
+def upload_to_google_lens():
+    # Automatically install and use the correct ChromeDriver
+    chrome_options = Options()
+    chrome_options.add_experimental_option("detach", True)  # Keep browser open
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+
+    try:
+        # Open Bing Visual Search
+        driver.get(BING_IMAGE_SEARCH_URL)
+
+        # Wait for Upload Button & Ensure It’s Visible
+        upload_button = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.XPATH, "//input[@type='file']"))
+        )
+        driver.execute_script("arguments[0].style.display = 'block';", upload_button)
+
+        # Upload Screenshot
+        upload_button.send_keys(FILE_PATH)
+        print("✅ Image uploaded to Bing successfully!")
+
+        # Wait for Image Preview to Load
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.CLASS_NAME, "visualSearchResults"))
+        )
+        print("✅ Image processed successfully!")
+
+        # Keep the browser open for manual verification
+        print("🔹 Browser will remain open. Close it manually when done.")
+        while True:
+            time.sleep(1)  # Keep script running
+
+    except Exception as e:
+        print(f"❌ Error during upload: {e}")
+
+def translate_text(query):
+    """Translate the selected text using Google Translate."""
+    if query:
+        print(f"Translating: {query}")
+        webbrowser.open(f"https://translate.google.com/?sl=auto&tl=en&text={query}&op=translate")
 
 def start_application():
     """Start the main application loop."""
@@ -173,6 +313,21 @@ def start_application():
                 else:
                     print("No text detected in the box.")
 
+            if keyboard.is_pressed('ctrl+shift+c'):
+                print("Box activated! Capturing...")
+                screenshot = capture_box()
+                data = process_image(screenshot)
+                nearest_text = find_nearest_text(data)
+                if nearest_text:
+                    print(f"Nearest Text: {nearest_text}")
+                    for key, value in CODE_WORDS.items():
+                        if re.search(r'\b' + re.escape(key) + r'\b', nearest_text, re.IGNORECASE):
+                            print(f"CODE word '{key}' found! Copying corresponding value to clipboard.")
+                            pyperclip.copy(value)
+                            print("Copied to clipboard.")
+                            break
+                else:
+                    print("No text detected in the box.")
             if keyboard.is_pressed('ctrl+shift+g'):
                 print("Google Search activated!")
                 screenshot = capture_box()
@@ -186,10 +341,20 @@ def start_application():
                 nearest_text = find_nearest_text(data)
                 value = get_word_definition(nearest_text)
                 pyperclip.copy(value)
-            # if keyboard.is_pressed('ctrl+shift+q'):
-            #     print("Image Search activated!")
-            #     screenshot = capture_box()
-            #     handle_image_upload(screenshot)
+
+            if keyboard.is_pressed('ctrl+shift+t'):
+                print("Translation activated!")
+                screenshot = capture_box()
+                data = process_image(screenshot)
+                nearest_text = find_nearest_text(data)
+                translate_text(nearest_text)
+
+            if keyboard.is_pressed('ctrl+shift+q'):
+                print("Image Search activated! Capturing screenshot...")
+                screenshot=capture_box()
+                screenshot_path = capture_screenshot(screenshot)
+                print("Uploading image for search...")
+                upload_to_google_lens()
 
 
             if keyboard.is_pressed('ctrl+shift+o'):
@@ -201,6 +366,8 @@ def start_application():
             print(f"Error: {e}")
 
 def main():
+    global TARGET_WORDS  # Make sure you declare TARGET_WORDS as global in main as well
+    TARGET_WORDS = load_target_words()  # Load target words from file
     def update_box_width(value):
         global BOX_WIDTH_EM
         BOX_WIDTH_EM = int(round(float(value)))
@@ -213,33 +380,41 @@ def main():
     root = tk.Tk()
     root.overrideredirect(True)
     root.attributes("-topmost", True)
-    root.attributes("-transparentcolor", "white")
+    root.attributes("-transparentcolor", root['bg'])
 
-    canvas = tk.Canvas(root, width=root.winfo_screenwidth(), height=root.winfo_screenheight(), bg="white")
+    canvas = tk.Canvas(root, width=root.winfo_screenwidth(), height=root.winfo_screenheight())
     canvas.pack()
 
-    clipboard_label = tk.Label(root, text=f"{pyperclip.paste()[:30]}...", bg="white", fg="black")
+    clipboard_label = tk.Label(root, text=f"{pyperclip.paste()[:30]}...", fg="black")
     create_transparent_box(root, canvas, clipboard_label)
 
     # Labels to display slider values
-    width_label = tk.Label(root, text=f"Width: {BOX_WIDTH_EM} em", bg="white", fg="black")
-    height_label = tk.Label(root, text=f"Height: {BOX_HEIGHT_EM} em", bg="white", fg="black")
+    width_label = tk.Label(root, text=f"Width: {BOX_WIDTH_EM} em",  fg="black")
+    height_label = tk.Label(root, text=f"Height: {BOX_HEIGHT_EM} em", fg="black")
 
     # Position labels on the screen
     width_label.place(x=root.winfo_screenwidth() - 250, y=78)
     height_label.place(x=root.winfo_screenwidth() - 250, y=228)
 
-    slider_width = ttk.Scale(root, from_=1, to=50, orient=tk.VERTICAL, command=update_box_width)
+    slider_width = ttk.Scale(root, from_=1, to=root.winfo_screenmmwidth()//2, orient=tk.VERTICAL, command=update_box_width)
     slider_width.set(BOX_WIDTH_EM)
     slider_width.place(x=root.winfo_screenwidth() - 200, y=100)
 
-    slider_height = ttk.Scale(root, from_=1, to=20, orient=tk.VERTICAL, command=update_box_height)
+    slider_height = ttk.Scale(root, from_=1, to=root.winfo_screenmmheight()//2, orient=tk.VERTICAL, command=update_box_height)
     slider_height.set(BOX_HEIGHT_EM)
     slider_height.place(x=root.winfo_screenwidth() - 200, y=250)
 
+    guide = ttk.Label(root, text=f'CTRL+SHIFT+O = Close the application\nCTRL+SHIFT+A = Fetch value from target_words\nCTRL+SHIFT+C = Fetch python code\nCTRL+SHIFT+G = google searching\nCTRL+SHIFT+M = Fetch meaning\nCTRL+SHIFT+T = Translate\nCTRL+SHIFT+Q = Image search',
+                  font=("Arial", 7), foreground="green")  # Set text color to green
+    guide.place(x=root.winfo_screenwidth() - 250, y=400)
+
+    edit_button = ttk.Button(root, text="Edit Target Words", command=lambda: edit_target_words(root))
+    edit_button.place(x=root.winfo_screenwidth() - 250, y=350) 
+
     app_thread = threading.Thread(target=start_application, daemon=True)
     app_thread.start()
-
+    
+    root.protocol("WM_DELETE_WINDOW", save_target_words) # save when user closes the main window using the 'X' button.
     root.mainloop()
 
 if __name__ == "__main__":
