@@ -51,16 +51,16 @@ def load_target_words():
             return json.load(f)
     except FileNotFoundError:
         return {
-            "Name": "Amish Singh",
-            "First Name": "Amish",
-            "Last Name": "Singh",
-            "Full Name": "Amish Singh",
-            "Email": "amishsingh1210@gmail.com",
-            "Email Address": "amishsingh1210@gmail.com",
-            "E-mail": "amishsingh1210@gmail.com",
-            "Phone Number": "7002780696",
-            "Mobile Number": "7002780696",
-            "Contact Number": "7002780696"
+            "Name": "Name",
+            "First Name": "First Name",
+            "Last Name": "Last Name",
+            "Full Name": "Name",
+            "Email": "email@email.com",
+            "Email Address": "email@email.com",
+            "E-mail": "email.email.com",
+            "Phone Number": "0000000000",
+            "Mobile Number": "0000000000",
+            "Contact Number": "0000000000"
             }
 
 def save_target_words():
